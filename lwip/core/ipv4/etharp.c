@@ -581,7 +581,7 @@ etharp_cleanup_netif(struct netif *netif)
  * @param ip_ret points to return pointer
  * @return table index if found, -1 otherwise
  */
-ssize_t
+size_t
 etharp_find_addr(struct netif *netif, const ip4_addr_t *ipaddr,
                  struct eth_addr **eth_ret, const ip4_addr_t **ip_ret)
 {
