@@ -1,5 +1,4 @@
 import socket
-import struct
 
 # This matches the port in your pp-client.c
 HOST = ''  # Listen on all interfaces
