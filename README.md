@@ -1,4 +1,5 @@
-# Remote `XV6`
+# Event-Driven Multiclient Chat Application on xv6
+- The original repo: [ProjectTinyNet](https://github.com/ChenXuanting/ProjectTinyNet.git)
 
 # Prerequire
 - QEMU
