@@ -13,7 +13,7 @@ def start_client():
       print("Connected!")
       
       # 1. Send Data
-      message = "Hello xv6!"
+      message = "Hello ha_doan_trang!"
       print(f"Sending: {message}")
       s.sendall(message.encode())
       

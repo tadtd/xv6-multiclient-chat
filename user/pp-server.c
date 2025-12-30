@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
         
         if (recv_len > 0) {
             printf("server: received %d bytes: %s\n", recv_len, buffer);
-            char *msg = "Hello baby!";
+            char *msg = "Hello do_tien_dat!";
             int response_len = strlen(msg);
             write(clnt_sock, msg, response_len);
             printf("server: sent reply to client\n");
