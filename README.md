@@ -7,7 +7,7 @@
 
 # Installation
 ```bash
-git clone https://github.com/tadtd/remote-xv6
+git clone https://github.com/tadtd/xv6-multiclient-chat
 
 make qemu
 ```
