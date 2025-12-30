@@ -7,12 +7,12 @@
 #define BUF_SIZE 100
 // #define SERVER_HOST "10.0.2.15"
 #define SERVER_HOST "0.0.0.0"
-#define SERVER_PORT 20480
+#define SERVER_PORT 80
 
 int main(int argc, char *argv[]) {
     struct sockaddr serv_addr = {
         .sa_family = AF_INET,
-        .sin_port = htons(SERVER_PORT),
+        .sin_port = SERVER_PORT,
     };
     inetaddress(SERVER_HOST,&serv_addr);  // server ip
 
@@ -53,8 +53,15 @@ int main(int argc, char *argv[]) {
         memset(buffer, 0, BUF_SIZE);
         printf("server: reading from socket %d\n", clnt_sock);
         int recv_len = read(clnt_sock, buffer, BUF_SIZE);  
-        printf("server: received %d bytes: %s\n", recv_len, buffer);
         
+        if (recv_len > 0) {
+            printf("server: received %d bytes: %s\n", recv_len, buffer);
+            char *msg = "Hello baby!";
+            int response_len = strlen(msg);
+            write(clnt_sock, msg, response_len);
+            printf("server: sent reply to client\n");
+        }
+
         int sent_len = write(clnt_sock, buffer, recv_len);
         if (sent_len != recv_len)
             printf("server: failed to send all data to client");
