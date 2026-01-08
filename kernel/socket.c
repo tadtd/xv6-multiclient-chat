@@ -20,12 +20,22 @@ struct {
     int sem;
 } dns_sem;
 
+// Global channel for net_poll wakeup
+struct {
+    struct spinlock lock;
+    int waiting;            // Number of processes waiting on poll
+} net_poll_chan;
+
 // initialize socket module, called from main.c
 void sockinit(void)
 {
     // initialize the global DNS semaphore
     initlock(&dns_sem.lock, "dns");
     dns_sem.sem = 0;
+    
+    // initialize the net_poll channel
+    initlock(&net_poll_chan.lock, "net_poll");
+    net_poll_chan.waiting = 0;
 }
 
 static void sem_wait(struct spinlock *lock, int *sem)
@@ -59,6 +69,7 @@ err_t sock_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
         sock->eof_reached = 1;
         printf("sock_recv: received EOF\n");
         sem_signal(&sock->lock, &sock->recv_sem);
+        sock_poll_wakeup();  // Wake up poll waiters
         return ERR_OK;
     }
     
@@ -92,6 +103,9 @@ err_t sock_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 
     // signal the socket
     sem_signal(&sock->lock, &sock->recv_sem);
+    
+    // Wake up poll waiters
+    sock_poll_wakeup();
 
     return ERR_OK;
 }
@@ -202,6 +216,9 @@ err_t sock_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     // wake up the process that called accept()
     // and is waiting for an incoming connection
     sem_signal(&sock->lock, &sock->sem);
+    
+    // Wake up poll waiters for new connection
+    sock_poll_wakeup();
 
     return ERR_OK;
 }
@@ -725,4 +742,168 @@ int sockgethostbyname(const char *name, struct sockaddr *addr)
 int sockinetaddress(const char *name, struct sockaddr *addr){
     addr->sin_addr = inet_addr(name);
     return 0;
+}
+
+
+/* APIS FOR NET_POLL */
+
+
+// Wake up all processes waiting in net_poll
+// Called from network interrupt handler
+void sock_poll_wakeup(void)
+{
+    acquire(&net_poll_chan.lock);
+    if (net_poll_chan.waiting > 0) {
+        wakeup(&net_poll_chan);
+    }
+    release(&net_poll_chan.lock);
+}
+
+// Check if a socket has data available to read (non-blocking)
+static int sock_has_data(struct socket *sock)
+{
+    if (sock == NULL)
+        return 0;
+    
+    // Check if EOF reached
+    if (sock->eof_reached)
+        return 1;
+    
+    // Check if data available in receive buffer
+    int num_avail = sock->recv_avail - sock->recv_used + 1;
+    return num_avail > 0;
+}
+
+// Check if a listening socket has a pending connection
+static int sock_has_pending_connection(struct socket *sock)
+{
+    if (sock == NULL)
+        return 0;
+    
+    // If state is SS_ACCEPTING, there's a pending connection
+    return sock->state == SS_ACCEPTING;
+}
+
+// Check if a socket is closed/disconnected
+static int sock_is_closed(struct socket *sock)
+{
+    if (sock == NULL)
+        return 1;
+    
+    return sock->eof_reached || sock->state == SS_FREE;
+}
+
+// Poll multiple file descriptors for network activity
+// Returns the number of file descriptors with events, or -1 on error
+// timeout: -1 = block indefinitely, 0 = return immediately, >0 = timeout in ticks
+int sockpoll(struct pollfd *fds, int nfds, int timeout)
+{
+    struct proc *p = myproc();
+    int ready_count = 0;
+    uint start_ticks;
+    
+    if (nfds <= 0 || nfds > MAX_POLL_FDS)
+        return -1;
+    
+    // Record start time for timeout
+    acquire(&tickslock);
+    start_ticks = ticks;
+    release(&tickslock);
+    
+    while (1) {
+        ready_count = 0;
+        
+        // Check each file descriptor
+        for (int i = 0; i < nfds; i++) {
+            fds[i].revents = 0;
+            int fd = fds[i].fd;
+            
+            // Skip invalid file descriptors
+            if (fd < 0) {
+                continue;
+            }
+            
+            if (fd >= NOFILE || p->ofile[fd] == 0) {
+                fds[i].revents = POLLNVAL;
+                ready_count++;
+                continue;
+            }
+            
+            struct file *f = p->ofile[fd];
+            
+            // Only handle socket file descriptors
+            if (f->type != FD_SOCK) {
+                fds[i].revents = POLLNVAL;
+                ready_count++;
+                continue;
+            }
+            
+            struct socket *sock = f->sock;
+            
+            // Check for requested events
+            if (fds[i].events & POLLIN) {
+                // For listening sockets, check for pending connections
+                if (sock->state == SS_LISTENING || sock->state == SS_ACCEPTING) {
+                    if (sock_has_pending_connection(sock)) {
+                        fds[i].revents |= POLLIN;
+                    }
+                }
+                // For connected sockets, check for data
+                else if (sock->state == SS_CONNECTED || sock->state == SS_RECVING) {
+                    if (sock_has_data(sock)) {
+                        fds[i].revents |= POLLIN;
+                    }
+                }
+            }
+            
+            // Check for write availability (socket is connected and can send)
+            if (fds[i].events & POLLOUT) {
+                if (sock->state == SS_CONNECTED && tcp_sndbuf(sock->pcb) > 0) {
+                    fds[i].revents |= POLLOUT;
+                }
+            }
+            
+            // Check for hangup/error conditions
+            if (sock_is_closed(sock)) {
+                fds[i].revents |= POLLHUP;
+            }
+            
+            if (fds[i].revents != 0) {
+                ready_count++;
+            }
+        }
+        
+        // If we found ready descriptors, return immediately
+        if (ready_count > 0) {
+            return ready_count;
+        }
+        
+        // If timeout is 0, return immediately (non-blocking poll)
+        if (timeout == 0) {
+            return 0;
+        }
+        
+        // Check if timeout expired
+        if (timeout > 0) {
+            acquire(&tickslock);
+            uint current_ticks = ticks;
+            release(&tickslock);
+            
+            if (current_ticks - start_ticks >= (uint)timeout) {
+                return 0;  // Timeout expired
+            }
+        }
+        
+        // Sleep until woken up by network activity
+        acquire(&net_poll_chan.lock);
+        net_poll_chan.waiting++;
+        sleep(&net_poll_chan, &net_poll_chan.lock);
+        net_poll_chan.waiting--;
+        release(&net_poll_chan.lock);
+        
+        // Check if process was killed while sleeping
+        if (p->killed) {
+            return -1;
+        }
+    }
 }

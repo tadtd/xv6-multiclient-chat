@@ -401,6 +401,8 @@ virtio_net_intr(void)
     if (net.rx.used->idx > net.rx.used_idx) {
         // descriptor chain is freed in virtio_net_recv()
         wakeup(&net.rx);
+        // Also wake up poll waiters
+        sock_poll_wakeup();
     }
 
     // outgoing packet: free descriptors and do some bookkeeping
