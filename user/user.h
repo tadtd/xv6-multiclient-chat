@@ -1,6 +1,14 @@
 struct stat;
 struct rtcdate;
 struct sockaddr;
+struct pollfd;
+
+// Poll event flags (same as kernel/socket.h)
+#define POLLIN      0x001   // Data available to read
+#define POLLOUT     0x004   // Writing now will not block
+#define POLLERR     0x008   // Error condition
+#define POLLHUP     0x010   // Hung up (connection closed)
+#define POLLNVAL    0x020   // Invalid file descriptor
 
 // system calls
 int fork(void);
@@ -34,6 +42,7 @@ int accept(int, struct sockaddr*, int*);
 int gethostbyname(const char*, struct sockaddr*);
 int inetaddress(const char*, struct sockaddr*);
 uint timenow();
+int net_poll(struct pollfd*, int, int);
 
 // ulib.c
 int stat(const char*, struct stat*);

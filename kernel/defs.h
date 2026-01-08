@@ -11,6 +11,7 @@ struct superblock;
 struct socket;
 struct sockaddr;
 struct tcp_pcb;
+struct pollfd;
 
 // bio.c
 void            binit(void);
@@ -93,6 +94,8 @@ int             socklisten(int, int);
 int             sockaccept(int, struct sockaddr*, int*);
 int             sockgethostbyname(const char*, struct sockaddr*);
 int             sockinetaddress(const char*, struct sockaddr*);
+int             sockpoll(struct pollfd*, int, int);
+void            sock_poll_wakeup(void);
 
 // printf.c
 void            backtrace(void);

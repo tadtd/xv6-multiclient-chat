@@ -61,3 +61,20 @@ struct sockaddr
 #define MAX_DOMAIN_NAME 256
 #define MAX_ADDRESS_LENGTH 256
 #define DNS_SERVER_IP 0x08080808    // Google DNS server
+
+// Poll event flags (similar to POSIX poll)
+#define POLLIN      0x001   // Data available to read
+#define POLLOUT     0x004   // Writing now will not block
+#define POLLERR     0x008   // Error condition
+#define POLLHUP     0x010   // Hung up (connection closed)
+#define POLLNVAL    0x020   // Invalid file descriptor
+
+// Maximum number of file descriptors to poll
+#define MAX_POLL_FDS 16
+
+// Structure for net_poll system call
+struct pollfd {
+    int fd;             // File descriptor to poll
+    short events;       // Events to watch for
+    short revents;      // Events that occurred
+};

@@ -633,3 +633,44 @@ sys_inetaddress(void)
 
   return rc;
 }
+
+/*
+net_poll: poll multiple file descriptors for network activity
+args: (struct pollfd *fds, int nfds, int timeout)
+  fds: array of pollfd structures
+  nfds: number of file descriptors to poll
+  timeout: timeout in ticks (-1 = block indefinitely, 0 = non-blocking)
+returns: number of file descriptors with events, or -1 on error
+*/
+uint64
+sys_net_poll(void)
+{
+  uint64 user_fds;
+  int nfds;
+  int timeout;
+  
+  if (argaddr(0, &user_fds) < 0 || argint(1, &nfds) < 0 || argint(2, &timeout) < 0)
+    return -1;
+  
+  if (nfds <= 0 || nfds > MAX_POLL_FDS)
+    return -1;
+  
+  // Allocate kernel buffer for pollfd array
+  struct pollfd fds[MAX_POLL_FDS];
+  int fds_size = nfds * sizeof(struct pollfd);
+  
+  // Copy pollfd array from user space to kernel space
+  if (copyin(myproc()->pagetable, (char*)fds, user_fds, fds_size) < 0)
+    return -1;
+  
+  // Call the socket poll function
+  int rc = sockpoll(fds, nfds, timeout);
+  
+  // Copy results back to user space
+  if (rc >= 0) {
+    if (copyout(myproc()->pagetable, user_fds, (char*)fds, fds_size) < 0)
+      return -1;
+  }
+  
+  return rc;
+}
