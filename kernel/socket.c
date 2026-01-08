@@ -640,6 +640,10 @@ int socklisten(int sockfd, int backlog)
     sock->file->readable = 0;
     sock->file->writable = 0;
 
+    // Set up accept callback for event-driven servers using net_poll()
+    // This allows connections to be detected via poll() before accept() is called
+    sock_setup_callbacks_accept(sock);
+
     return 0;
 }
 
@@ -653,18 +657,22 @@ int sockaccept(int sockfd, struct sockaddr *addr, int *addrlen)
         printf("sockaccept: invalid socket\n");
         return -1;
     }
-    LWIP_ASSERT("sockaccept: invalid socket state", sock->state == SS_LISTENING);
+    LWIP_ASSERT("sockaccept: invalid socket state", sock->state == SS_LISTENING || sock->state == SS_ACCEPTING);
 
-    sock_setup_callbacks_accept(sock);
+    // If state is SS_LISTENING, we need to wait for a connection
+    // If state is SS_ACCEPTING, a connection is already pending (from poll-based flow)
+    if (sock->state == SS_LISTENING) {
+        sock_setup_callbacks_accept(sock);
 
-    // will be woken up by sock_accept() when a connection is established
-    // the new connected PCB is stored in sock->accept_pcb
-    sem_wait(&sock->lock, &sock->sem);
+        // will be woken up by sock_accept() when a connection is established
+        // the new connected PCB is stored in sock->accept_pcb
+        sem_wait(&sock->lock, &sock->sem);
 
-    // check if an incoming connection was accepted
-    if (sock->state != SS_ACCEPTING) {
-        printf("sockaccept: failed to accept new connection\n");
-        return -1;
+        // check if an incoming connection was accepted
+        if (sock->state != SS_ACCEPTING) {
+            printf("sockaccept: failed to accept new connection\n");
+            return -1;
+        }
     }
 
     // get the file descriptor of the new socket
