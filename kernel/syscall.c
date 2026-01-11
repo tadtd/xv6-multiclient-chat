@@ -115,6 +115,7 @@ extern uint64 sys_gethostbyname(void);
 extern uint64 sys_inetaddress(void);
 extern uint64 sys_timenow(void);
 extern uint64 sys_net_poll(void);
+extern uint64 sys_fcntl(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -148,6 +149,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_gethostbyname] sys_gethostbyname,
 [SYS_inetaddress] sys_inetaddress,
 [SYS_timenow] sys_timenow,
+[SYS_net_poll] sys_net_poll,
+[SYS_fcntl]   sys_fcntl,
 [SYS_net_poll] sys_net_poll,
 };
 

@@ -33,3 +33,4 @@
 #define SYS_inetaddress     30
 #define SYS_timenow     31
 #define SYS_net_poll        32
+#define SYS_fcntl           33

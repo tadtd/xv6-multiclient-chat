@@ -47,3 +47,4 @@ entry("gethostbyname");
 entry("inetaddress");
 entry("timenow");
 entry("net_poll");
+entry("fcntl");

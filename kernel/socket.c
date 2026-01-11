@@ -7,6 +7,7 @@
 #include "fs.h"
 #include "sleeplock.h"
 #include "file.h"
+#include "fcntl.h"
 #include "socket.h"
 #include "lwip/tcp.h"
 #include "lwip/dns.h"
@@ -341,7 +342,7 @@ int sockalloc(int domain, int type, int protocol, struct tcp_pcb *pcb, struct pr
 // called from fileread() in kernel/file.c
 // https://man7.org/linux/man-pages/man2/read.2.html
 // returns the number of bytes read on success, or -1 on error
-int sockread(struct socket *sock, uint64 addr, int n) 
+int sockread(struct socket *sock, uint64 addr, int n, char nonblocking) 
 {
     LWIP_ASSERT("sockread: invalid socket state", sock->state == SS_CONNECTED);
 
@@ -355,9 +356,15 @@ int sockread(struct socket *sock, uint64 addr, int n)
     if (sock->eof_reached && num_avail == 0)
         return 0;
 
-    // we only implement socket in blocking mode
-    // EOF not received and no data available, so wait for some data
+    // No data available
     if (num_avail == 0) {
+        // In non-blocking mode, return EAGAIN immediately
+        if (nonblocking) {
+            myproc()->error_no = EAGAIN;
+            return -1;
+        }
+        
+        // Blocking mode: wait for some data
         // will be woken up by tcp_poll() when data is available or EOF is received
         sock->state = SS_RECVING;
 
@@ -405,7 +412,7 @@ int sockread(struct socket *sock, uint64 addr, int n)
 // called from filewrite() in kernel/file.c
 // https://man7.org/linux/man-pages/man2/write.2.html
 // returns the number of bytes written on success, or -1 on error
-int sockwrite(struct socket *sock, uint64 addr, int n) 
+int sockwrite(struct socket *sock, uint64 addr, int n, char nonblocking) 
 {
     LWIP_ASSERT("sockwrite: invalid socket state", sock->state == SS_CONNECTED);
 
@@ -437,6 +444,15 @@ int sockwrite(struct socket *sock, uint64 addr, int n)
         while (1) {
             // length of available space in send buffer
             int avail_buf_len = tcp_sndbuf(sock->pcb); 
+
+            // In non-blocking mode, if buffer is full, return what we've written so far
+            if (nonblocking && avail_buf_len == 0) {
+                if (written_len == 0) {
+                    myproc()->error_no = EAGAIN;
+                    return -1;
+                }
+                return written_len;
+            }
 
             // amount of data to send in this iteration
             int to_write_len = n-written_len > avail_buf_len ? avail_buf_len : n-written_len;
@@ -650,7 +666,7 @@ int socklisten(int sockfd, int backlog)
 // called from sys_accept() in kernel/sysfile.c
 // https://man7.org/linux/man-pages/man2/accept.2.html
 // returns a new socket on success, or -1 on error
-int sockaccept(int sockfd, struct sockaddr *addr, int *addrlen)
+int sockaccept(int sockfd, struct sockaddr *addr, int *addrlen, char nonblocking)
 {
     struct socket *sock = myproc()->ofile[sockfd]->sock;
     if (sock == NULL) {
@@ -662,6 +678,12 @@ int sockaccept(int sockfd, struct sockaddr *addr, int *addrlen)
     // If state is SS_LISTENING, we need to wait for a connection
     // If state is SS_ACCEPTING, a connection is already pending (from poll-based flow)
     if (sock->state == SS_LISTENING) {
+        // In non-blocking mode and no connection is pending, return EAGAIN
+        if (nonblocking) {
+            myproc()->error_no = EAGAIN;
+            return -1;
+        }
+        
         sock_setup_callbacks_accept(sock);
 
         // will be woken up by sock_accept() when a connection is established

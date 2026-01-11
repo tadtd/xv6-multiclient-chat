@@ -183,7 +183,7 @@ UPROGS=\
 	$U/_specialtest\
 	$U/_pp-server\
 	$U/_pp-client\
-	$U/_chatserver\
+	$U/_chat_server\
 	# $U/_symlinktest\
 
 fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)

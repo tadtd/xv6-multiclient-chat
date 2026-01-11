@@ -3,15 +3,16 @@
 Event-Driven Multiclient Chat Client for xv6
 
 This client connects to the xv6 chat server and provides a multi-threaded
-interface:
+interface with non-blocking socket support:
 - Main thread: handles user input and sends messages
-- Listener thread: continuously receives messages from server
+- Listener thread: continuously receives messages from server using select()
 
 Features:
+- Non-blocking socket operations with select()
 - Automatic reconnection on disconnect
 - Graceful handling of server shutdown
-- Non-blocking message reception
 - Thread-safe operations
+- Efficient I/O multiplexing
 """
 
 import socket
