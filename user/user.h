@@ -10,6 +10,13 @@ struct pollfd;
 #define POLLHUP     0x010   // Hung up (connection closed)
 #define POLLNVAL    0x020   // Invalid file descriptor
 
+// fcntl flags and commands
+#define O_NONBLOCK  0x800
+#define F_GETFL     3
+#define F_SETFL     4
+#define EAGAIN      11
+#define EWOULDBLOCK EAGAIN
+
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -43,6 +50,7 @@ int gethostbyname(const char*, struct sockaddr*);
 int inetaddress(const char*, struct sockaddr*);
 uint timenow();
 int net_poll(struct pollfd*, int, int);
+int fcntl(int, int, ...);
 
 // ulib.c
 int stat(const char*, struct stat*);

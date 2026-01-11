@@ -567,8 +567,13 @@ sys_accept(void)
   struct sockaddr addr;
   int addrlen;
   int new_sockfd;
+  
+  struct proc *p = myproc();
+  struct file *f = p->ofile[sockfd];
+  if (!f || f->type != FD_SOCK)
+    return -1;
 
-  if ((new_sockfd = sockaccept(sockfd, &addr, &addrlen)) < 0)
+  if ((new_sockfd = sockaccept(sockfd, &addr, &addrlen, f->nonblocking)) < 0)
     return -1;
   
   pagetable_t pagetable = myproc()->pagetable;
@@ -673,4 +678,36 @@ sys_net_poll(void)
   }
   
   return rc;
+}
+
+uint64
+sys_fcntl(void)
+{
+  struct file *f;
+  int fd, cmd, arg;
+  
+  if (argfd(0, &fd, &f) < 0)
+    return -1;
+  if (argint(1, &cmd) < 0)
+    return -1;
+  
+  switch (cmd) {
+    case F_GETFL:
+      // Return current file status flags
+      if (f->nonblocking)
+        return O_NONBLOCK;
+      return 0;
+    
+    case F_SETFL:
+      // Set file status flags
+      if (argint(2, &arg) < 0)
+        return -1;
+      
+      // Only O_NONBLOCK flag is supported for now
+      f->nonblocking = (arg & O_NONBLOCK) ? 1 : 0;
+      return 0;
+    
+    default:
+      return -1;
+  }
 }

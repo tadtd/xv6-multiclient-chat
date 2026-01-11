@@ -1,9 +1,15 @@
 /*
  * Event-Driven Multiclient Chat Server for xv6
  * 
- * This server uses a single-threaded event loop with the net_poll system call
- * to handle multiple concurrent client connections efficiently without
- * spawning separate processes for each client.
+ * This server uses a single-threaded event loop with net_poll() and 
+ * non-blocking sockets to handle multiple concurrent client connections 
+ * efficiently without spawning separate processes for each client.
+ * 
+ * Features:
+ * - Non-blocking socket I/O
+ * - Event-driven architecture with net_poll()
+ * - Handles up to 14 concurrent clients
+ * - User commands: /name, /list
  */
 
 #include "kernel/param.h"
@@ -96,7 +102,7 @@ void handle_new_connection(void) {
     
     int client_fd = accept(server_sock, &client_addr, &addr_len);
     if (client_fd < 0) {
-        printf("chatserver: accept failed\n");
+        // Non-blocking accept - EAGAIN means no connection available
         return;
     }
     
@@ -143,7 +149,10 @@ void handle_new_connection(void) {
     
     num_clients++;
     
-    printf("chatserver: new client connected (slot %d, fd %d)\n", slot, client_fd);
+    // Set client socket to non-blocking mode
+    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+    
+    printf("chatserver: new client connected (slot %d, fd %d, non-blocking)\n", slot, client_fd);
     
     // Send welcome message
     char welcome[128];
@@ -312,9 +321,9 @@ int build_poll_array(struct pollfd *fds) {
 }
 
 int main(int argc, char *argv[]) {
-    printf("===========================================\n");
-    printf("   xv6 Event-Driven Multiclient Chat Server\n");
-    printf("===========================================\n");
+    printf("=====================================================\n");
+    printf("  xv6 Non-Blocking Event-Driven Chat Server\n");
+    printf("=====================================================\n");
     
     // Initialize client tracking
     init_clients();
@@ -335,6 +344,10 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     
+    // Set server socket to non-blocking mode
+    fcntl(server_sock, F_SETFL, O_NONBLOCK);
+    printf("chatserver: server socket set to non-blocking mode\n");
+    
     // Bind to address
     if (bind(server_sock, &serv_addr, sizeof(serv_addr)) < 0) {
         printf("chatserver: failed to bind\n");
@@ -350,8 +363,9 @@ int main(int argc, char *argv[]) {
     }
     
     printf("chatserver: listening for connections...\n");
+    printf("chatserver: using non-blocking I/O + event-driven poll\n");
     printf("chatserver: commands - /name <newname>, /list\n");
-    printf("-------------------------------------------\n");
+    printf("-----------------------------------------------------\n");
     
     // Main event loop
     struct pollfd fds[MAX_CLIENTS + 1];

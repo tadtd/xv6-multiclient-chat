@@ -3,6 +3,7 @@ struct file {
   int ref; // reference count
   char readable;
   char writable;
+  char nonblocking; // non-blocking mode flag
   struct pipe *pipe; // FD_PIPE
   struct inode *ip;  // FD_INODE and FD_DEVICE
   struct socket *sock; // FD_SOCK
