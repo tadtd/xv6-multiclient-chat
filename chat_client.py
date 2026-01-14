@@ -42,6 +42,21 @@ class ChatClient:
         self.running = True
         self.listener_thread = None
         self.sock_lock = threading.Lock()
+        # Tạo file log riêng cho mỗi client
+        # Luôn ghi vào một file duy nhất cho toàn bộ lịch sử
+        self.username = f"user_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.log_filename = "chat_history.txt"
+        self.log_file = open(self.log_filename, "a", encoding="utf-8")
+
+    def update_logfile_by_username(self):
+        # Không làm gì vì luôn ghi vào chat_history.txt
+        pass
+
+    def log(self, direction, message):
+        # direction: 'SEND' hoặc 'RECV'
+        for line in message.rstrip().split('\n'):
+            self.log_file.write(f"[{self._timestamp()}] {direction}: {line}\n")
+        self.log_file.flush()
         
     def connect(self):
         """Establish connection to the xv6 chat server."""
@@ -104,15 +119,15 @@ class ChatClient:
                     if not self.sock or not self.connected:
                         break
                     sock_fd = self.sock
-                
+
                 # Wait for data with 1 second timeout
                 readable, _, exceptional = select.select([sock_fd], [], [sock_fd], 1.0)
-                
+
                 if exceptional:
                     print(f"\n[{self._timestamp()}] Socket error detected")
                     self._handle_disconnect("Socket error")
                     break
-                
+
                 if readable:
                     with self.sock_lock:
                         if not self.sock or not self.connected:
@@ -121,28 +136,35 @@ class ChatClient:
                             data = self.sock.recv(4096)
                         except:
                             data = None
-                    
+
                     if not data:
                         # Empty data = server closed connection
                         self._handle_disconnect("Server closed connection")
                         break
-                    
+
                     # Decode and process received data
                     try:
                         message = data.decode('utf-8')
                         buffer += message
-                        
+
                         # Process complete lines
                         while '\n' in buffer:
                             line, buffer = buffer.split('\n', 1)
                             if line.strip():
                                 print(f"\r{line}")
+                                # Nếu server gửi thông báo tên mới
+                                if line.startswith("Your name is: "):
+                                    newname = line.split(": ", 1)[1].strip()
+                                    if newname and newname != self.username:
+                                        self.username = newname
+                                        self.update_logfile_by_username()
+                                self.log('RECV', line)
                                 # Re-display prompt
                                 print("> ", end="", flush=True)
                     except UnicodeDecodeError:
                         print(f"\r[{self._timestamp()}] Received non-UTF8 data: {data}")
                         print("> ", end="", flush=True)
-                        
+
             except socket.timeout:
                 # Timeout is normal, continue loop
                 continue
@@ -155,7 +177,7 @@ class ChatClient:
                     print(f"\n[{self._timestamp()}] Listener error: {e}")
                     self._handle_disconnect(str(e))
                 break
-        
+
         print(f"\n[{self._timestamp()}] Listener thread stopped")
     
     def _handle_disconnect(self, reason):
@@ -168,7 +190,7 @@ class ChatClient:
         if not self.connected:
             print(f"[{self._timestamp()}] Not connected to server")
             return False
-        
+
         try:
             with self.sock_lock:
                 if self.sock:
@@ -176,12 +198,13 @@ class ChatClient:
                     if not message.endswith('\n'):
                         message += '\n'
                     self.sock.sendall(message.encode('utf-8'))
+                    self.log('SEND', message)
                     return True
         except BrokenPipeError:
             self._handle_disconnect("Broken pipe")
         except Exception as e:
             print(f"[{self._timestamp()}] Send error: {e}")
-        
+
         return False
     
     def start_listener(self):
@@ -195,6 +218,8 @@ class ChatClient:
         self.disconnect()
         if self.listener_thread and self.listener_thread.is_alive():
             self.listener_thread.join(timeout=2)
+        if hasattr(self, 'log_file'):
+            self.log_file.close()
     
     def run(self):
         """Main client loop - handles user input."""
@@ -224,7 +249,14 @@ class ChatClient:
                     if user_input.lower() == '/quit':
                         print("Goodbye!")
                         break
-                    
+
+                    if user_input.lower().startswith('/name '):
+                        # Cập nhật username local luôn, file log sẽ đổi khi server xác nhận
+                        newname = user_input[6:].strip()
+                        if newname:
+                            self.username = newname
+                            self.update_logfile_by_username()
+
                     if user_input.lower() == '/reconnect':
                         print("Attempting to reconnect...")
                         self.disconnect()
@@ -232,7 +264,7 @@ class ChatClient:
                         if self.connect():
                             self.start_listener()
                         continue
-                    
+
                     if user_input.lower() == '/help':
                         print("Commands:")
                         print("  /name <newname> - Change your nickname")
@@ -241,7 +273,7 @@ class ChatClient:
                         print("  /reconnect      - Reconnect to server")
                         print("  /help           - Show this help")
                         continue
-                    
+
                     # Send message to server
                     if not self.send_message(user_input):
                         print("Message not sent. Try /reconnect")
